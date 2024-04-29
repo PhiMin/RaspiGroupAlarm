@@ -11,7 +11,6 @@
 
 echo "00_Initialize ..."
 echo "============================================================"
-
 API_URL="https://app.groupalarm.com/api/v1/alarms?organization="
 MONITOR_URL="https://app.groupalarm.com/de/monitor/"
 
@@ -29,23 +28,102 @@ if [ "$EUID" -ne 0 ]
 	then echo "!!! Please run script as root !!!"
 	exit
 fi
-
 echo "============================================================"
 
-echo "01_Installing missing packages ..."
+echo "01_User Configuration ..."
+echo "============================================================"
+# Login Key Configuration
+if grep -q $MONITOR_URL $AUTOSTART_FILE; then
+	MONITOR_ID=`grep -Po "$MONITOR_URL\\d+" $AUTOSTART_FILE | sed 's/.*\///'`
+	MONITOR_KEY=`grep -Po "view_token=[a-z0-9\-]*" $AUTOSTART_FILE | sed 's/view_token=//'`
+	if grep -q "dark-theme" $AUTOSTART_FILE; then
+		MONITOR_DARK_MODE=true
+		MONITOR_DARK_OPTION="&theme=dark-theme"
+	else
+		MONITOR_DARK_MODE=false
+		MONITOR_DARK_OPTION=""
+	fi
+
+	echo "  * Configuration found from previous configuration:"
+	echo "  > Monitor-ID = $MONITOR_ID"
+	echo "  > Monitor-Key = $MONITOR_KEY"
+	echo "  > Dark Mode = $MONITOR_DARK_MODE"
+
+	#Check if monitor id and key from previous installation are valid
+	FULL_URL="$MONITOR_URL$MONITOR_ID?view_token=$MONITOR_KEY"
+	REDIRECT_URL=`curl -Ls -o /dev/null -w %{url_effective} $FULL_URL`
+	if [ "$FULL_URL" == "$REDIRECT_URL" ]; then
+		while true; do
+			read -p "  * Do you wish to use this configuration? [yn]: " yn
+			case $yn in
+				[Yy]* ) LOOP=false;break;;
+				[Nn]* ) LOOP=true;break;;
+				* ) echo "  * Please answer [y]es or [n]o";;
+			esac
+		done
+	else
+		echo "  * ERROR: Configuration invalid."
+		LOOP=true
+	fi
+fi
+
+while $LOOP; do
+	read -p "  * Enter Monitor-ID (integer):         " MONITOR_ID
+	read -p "  * Enter Monitor-Key (36 characters):  " MONITOR_KEY
+	read -p "  * Do you wish to use dark mode? [yn]: " yn
+	case $yn in
+		[Yy]* ) MONITOR_DARK_MODE=true;break;;
+		[Nn]* ) MONITOR_DARK_MODE=false;break;;
+		* ) echo "  * Please answer [y]es or [n]o";;
+	esac
+	
+	FULL_URL="$MONITOR_URL$MONITOR_ID?view_token=$MONITOR_KEY"
+	REDIRECT_URL=`curl -Ls -o /dev/null -w %{url_effective} $FULL_URL`
+
+	if [ "$FULL_URL" == "$REDIRECT_URL" ]; then
+		LOOP=false
+	else
+		echo "  * Configuration wrong. Please try again (To exit press Ctrl+C)..."
+	fi
+done
+
+#API Key Configuration
+if [ -f $SCREENSAVER_FILE ]; then
+
+	APIKEY=`grep -P "api_key=" $SCREENSAVER_FILE | sed "s/api_key='\([^']*\)'/\1/"`
+	echo "  * API-Key found from previous configuration: "
+	echo "    $APIKEY"
+
+	ORGID=`grep -P "org_id=" $SCREENSAVER_FILE | sed "s/org_id='\([^']*\)'/\1/"`
+	echo "  * Organization ID found from previous configuration: $ORGID"
+
+	#ToDo: Check if API/Access Key from previous installation is valid
+	while true; do
+		read -p "  * Do you wish to use this key? [yn]: " yn
+		case $yn in
+			[Yy]* ) LOOP=false; break;;
+			[Nn]* ) LOOP=true; break;;
+			* ) echo "  * Please answer [y]es or [n]o";;
+		esac
+	done
+else
+	LOOP=true
+fi
+
+while $LOOP; do
+	read -p "  * Enter API-Key   (64 characters):    " APIKEY
+	read -p "  * Organization ID (integer):          " ORGID
+	LOOP=false
+done
+echo "============================================================"
+
+echo "02_Installing missing packages ..."
 echo "============================================================"
 if dpkg-query -W unclutter > /dev/null 2>/dev/null; then
 	echo "  * unclutter already installed, ignoring ..."
 else
 	echo "  * installing unclutter ..."
 	$apt_install unclutter
-fi
-
-if dpkg-query -W xscreensaver-data > /dev/null 2>/dev/null; then
-	echo "  * xscreensaver already installed, ignoring ..."
-else
-	echo "  * installing xscreensaver ..."
-	$apt_install xscreensaver
 fi
 
 if dpkg-query -W jq > /dev/null 2>/dev/null; then
@@ -63,7 +141,7 @@ else
 fi
 echo "============================================================"
 
-echo "02_Setting up Python virtual environment ..."
+echo "03_Setting up Python virtual environment ..."
 echo "============================================================"
 if [ -d $PY_VENV ]; then
 	echo "  * Python virtual environment already created, ignoring ..."
@@ -99,95 +177,6 @@ else
 	echo "  * installing package Vcgencmd ..."
 	$pip install vcgencmd
 fi
-
-echo "============================================================"
-
-echo "03_User Configuration ..."
-echo "============================================================"
-# Login Key Configuration
-if grep -q $MONITOR_URL $AUTOSTART_FILE; then
-	MONITOR_ID=`grep -Po "$MONITOR_URL\\d+" $AUTOSTART_FILE | sed 's/.*\///'`
-	MONITOR_KEY=`grep -Po "view_token=[a-z0-9\-]*" $AUTOSTART_FILE | sed 's/view_token=//'`
-	if grep -q "dark-theme" $AUTOSTART_FILE; then
-		MONITOR_DARK_MODE=true
-		MONITOR_DARK_OPTION="&theme=dark-theme"
-	else
-		MONITOR_DARK_MODE=false
-		MONITOR_DARK_OPTION=""
-	fi
-
-	echo "  * Configuration found from previous configuration:"
-	echo "  > Monitor-ID = $MONITOR_ID"
-	echo "  > Monitor-Key = $MONITOR_KEY"
-	echo "  > Dark Mode = $MONITOR_DARK_MODE"
-
-	#Check if Login-Key from previous installation is valid
-	FULL_URL="$MONITOR_URL$MONITOR_ID?view_token=$MONITOR_KEY"
-	REDIRECT_URL=`curl -Ls -o /dev/null -w %{url_effective} $FULL_URL`
-	if [ "$FULL_URL" == "$REDIRECT_URL" ]; then
-		while true; do
-			read -p "  * Do you wish to use this configuration? [yn]: " yn
-			case $yn in
-				[Yy]* ) LOOP=false;break;;
-				[Nn]* ) LOOP=true;break;;
-				* ) echo "  * Please answer [y]es or [n]o";;
-			esac
-		done
-	else
-		echo "  * ERROR: Configuration invalid."
-		LOOP=true
-	fi
-fi
-
-while $LOOP; do
-	read -p "  * Enter Moitor-ID (integer):          " MONITOR_ID
-	read -p "  * Enter Monitor-Key (36 characters):  " MONITOR_KEY
-	read -p "  * Do you wish to use dark mode? [yn]: " yn
-	case $yn in
-		[Yy]* ) MONITOR_DARK_MODE=true;break;;
-		[Nn]* ) MONITOR_DARK_MODE=false;break;;
-		* ) echo "  * Please answer [y]es or [n]o";;
-	esac
-	
-	FULL_URL="$MONITOR_URL$MONITOR_ID?view_token=$MONITOR_KEY"
-	REDIRECT_URL=`curl -Ls -o /dev/null -w %{url_effective} $FULL_URL`
-
-	if [ "$FULL_URL" == "$REDIRECT_URL" ]; then
-		LOOP=false
-	else
-		echo "  * Configuration wrong. Please try again (To exit press Ctrl+C)..."
-	fi
-done
-
-#API Key Configuration
-if [ -f $SCREENSAVER_FILE ]; then
-
-	APIKEY=`grep -P "api_key=" $SCREENSAVER_FILE | sed "s/api_key='\([^']*\)'/\1/"`
-	echo "  * API-Key found from previous configuration: "
-	echo "    $APIKEY"
-
-	ORGID=`grep -P "org_id=" $SCREENSAVER_FILE | sed "s/org_id='\([^']*\)'/\1/"`
-	echo "  * Organization ID found from previous configuration: $ORGID"
-
-	#Check if API/Access Key from previous installation is valid
-	while true; do
-		read -p "  * Do you wish to use this key? [yn]: " yn
-		case $yn in
-			[Yy]* ) LOOP=false; break;;
-			[Nn]* ) LOOP=true; break;;
-			* ) echo "  * Please answer [y]es or [n]o";;
-		esac
-	done
-else
-	LOOP=true
-fi
-
-while $LOOP; do
-	read -p "  * Enter API-Key   (64 characters):    " APIKEY
-	read -p "  * Organization ID (integer):          " ORGID
-	LOOP=false
-done
-
 echo "============================================================"
 
 echo "04_Configure Screensaver..."
@@ -282,8 +271,7 @@ chown pi:pi $SCREENSAVER_FILE
 chmod a+x $SCREENSAVER_FILE
 echo "============================================================"
 
-
-echo "05_Configure Chromium Kiosk Mode..."
+echo "05_Configure Chromium Kiosk Mode ..."
 echo "============================================================"
 echo "  * Create Backup of $AUTOSTART_FILE ..."
 cp -n $AUTOSTART_FILE $AUTOSTART_FILE.bak
@@ -291,7 +279,6 @@ echo "  * Create new $AUTOSTART_FILE ..."
 cat <<EOF > $AUTOSTART_FILE
 @lxpanel --profile LXDE-pi
 @pcmanfm --desktop --profile LXDE-pi
-#@xscreensaver -no-splash
 
 @xset s off
 @xset -dpms
@@ -319,12 +306,10 @@ else
 	chown pi:crontab $CRON_FILE
 	chmod 600 $CRON_FILE
 fi
-
 echo "============================================================"
 
 echo "07_Reboot ..."
 echo "============================================================"
-
 while true; do
 	read -p "  * Do you wish to reboot? [yn]: " yn
 	case $yn in
@@ -334,7 +319,7 @@ while true; do
 	esac
 done
 
-if $LOOP; then
+if $REBOOT; then
 	echo "  * Raspberry will now reboot ..."
 	sleep 5
 	reboot
